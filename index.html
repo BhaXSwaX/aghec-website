@@ -739,6 +739,65 @@
                 });
             }
 
+
+            function closeMobileMenu() {
+                if (!mobileMenu || !mobileMenuButton) return;
+                mobileMenu.classList.add('hidden');
+                mobileMenuButton.setAttribute('aria-expanded', 'false');
+                mobileMenuButton.innerHTML = '<i class="fa-solid fa-bars text-lg"></i>';
+            }
+
+            function scrollToSection(hash, behavior) {
+                if (!hash || hash === '#') return false;
+
+                var target;
+                try {
+                    target = document.querySelector(hash);
+                } catch (error) {
+                    return false;
+                }
+
+                if (!target) return false;
+
+                var header = document.querySelector('header');
+                var offset = (header ? header.offsetHeight : 0) + 14;
+                var top = target.getBoundingClientRect().top + window.pageYOffset - offset;
+
+                window.scrollTo({
+                    top: Math.max(0, top),
+                    behavior: behavior || 'smooth'
+                });
+
+                return true;
+            }
+
+            var internalSectionLinks = document.querySelectorAll('a[href^="#"]');
+            Array.prototype.forEach.call(internalSectionLinks, function (link) {
+                link.addEventListener('click', function (event) {
+                    var hash = link.getAttribute('href');
+                    if (!hash || hash === '#') return;
+
+                    if (scrollToSection(hash, 'smooth')) {
+                        event.preventDefault();
+                        closeMobileMenu();
+
+                        if (window.location.hash !== hash) {
+                            history.pushState({ aghecAnchor: hash }, '', hash);
+                        } else {
+                            history.replaceState({ aghecAnchor: hash }, '', hash);
+                        }
+                    }
+                });
+            });
+
+            window.addEventListener('load', function () {
+                if (window.location.hash) {
+                    window.setTimeout(function () {
+                        scrollToSection(window.location.hash, 'auto');
+                    }, 100);
+                }
+            });
+
             var flipbookModal = document.getElementById('flipbookModal');
             var flipbookModalTitle = document.getElementById('flipbookModalTitle');
             var flipbookFrameHost = document.getElementById('flipbookFrameHost');
@@ -884,8 +943,10 @@
                     }
                     flipbookHistoryPushed = false;
                     closeFlipbookReader(true);
-                } else {
-                    restoreWebsitePosition();
+                } else if (window.location.hash) {
+                    window.setTimeout(function () {
+                        scrollToSection(window.location.hash, 'auto');
+                    }, 0);
                 }
             });
 
