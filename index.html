@@ -740,11 +740,24 @@
             var flipbookFullscreenButton = document.getElementById('flipbookFullscreenButton');
             var flipbookIsOpen = false;
             var flipbookHistoryPushed = false;
+            var flipbookCloseInProgress = false;
+            var flipbookNativeFullscreenActive = false;
             var lastFocusedElement = null;
+            var savedScrollX = 0;
+            var savedScrollY = 0;
 
             function showLoading() {
                 if (!flipbookFrameHost) return;
                 flipbookFrameHost.innerHTML = '<div class="grid h-full min-h-[60vh] place-items-center text-center"><div><div class="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-white/20 border-t-white"></div><p class="text-sm font-bold text-slate-400">Loading publication...</p></div></div>';
+            }
+
+            function restoreWebsitePosition() {
+                window.setTimeout(function () {
+                    window.scrollTo(savedScrollX, savedScrollY);
+                }, 0);
+                window.setTimeout(function () {
+                    window.scrollTo(savedScrollX, savedScrollY);
+                }, 80);
             }
 
             function loadFlipbookFrame(src, title) {
@@ -765,8 +778,11 @@
             function openFlipbookReader(src, title) {
                 if (!flipbookModal || !flipbookFrameHost || !src) return;
 
+                savedScrollX = window.scrollX || window.pageXOffset || 0;
+                savedScrollY = window.scrollY || window.pageYOffset || 0;
                 lastFocusedElement = document.activeElement;
                 flipbookIsOpen = true;
+                flipbookCloseInProgress = false;
                 document.body.style.overflow = 'hidden';
                 flipbookModalTitle.textContent = title || 'AGHEC Foundation Publication';
                 flipbookModal.classList.remove('hidden');
@@ -777,8 +793,10 @@
                     loadFlipbookFrame(src, title);
                 }, 120);
 
+                /* Push a same-URL history state so browser Back closes the reader,
+                   but the page does not jump to a hash such as #publication-reader. */
                 if (!history.state || !history.state.aghecFlipbookReader) {
-                    history.pushState({ aghecFlipbookReader: true }, '', '#publication-reader');
+                    history.pushState({ aghecFlipbookReader: true, aghecScrollX: savedScrollX, aghecScrollY: savedScrollY }, '', window.location.href);
                     flipbookHistoryPushed = true;
                 }
 
@@ -788,13 +806,21 @@
             }
 
             function closeFlipbookReader(skipHistory) {
-                if (!flipbookModal || !flipbookFrameHost || !flipbookIsOpen) return;
+                if (!flipbookModal || !flipbookFrameHost || !flipbookIsOpen || flipbookCloseInProgress) return;
 
+                flipbookCloseInProgress = true;
                 flipbookIsOpen = false;
                 document.body.style.overflow = '';
                 flipbookModal.classList.add('hidden');
                 flipbookModal.classList.remove('flex');
                 flipbookFrameHost.innerHTML = '';
+
+                if (document.fullscreenElement && document.exitFullscreen) {
+                    document.exitFullscreen().catch(function () {});
+                }
+                flipbookNativeFullscreenActive = false;
+
+                restoreWebsitePosition();
 
                 if (lastFocusedElement && typeof lastFocusedElement.focus === 'function') {
                     lastFocusedElement.focus({ preventScroll: true });
@@ -804,6 +830,10 @@
                     flipbookHistoryPushed = false;
                     history.back();
                 }
+
+                window.setTimeout(function () {
+                    flipbookCloseInProgress = false;
+                }, 150);
             }
 
             var flipbookButtons = document.querySelectorAll('[data-load-flipbook]');
@@ -824,21 +854,32 @@
             if (flipbookFullscreenButton) {
                 flipbookFullscreenButton.addEventListener('click', function () {
                     if (flipbookModal && flipbookModal.requestFullscreen) {
-                        flipbookModal.requestFullscreen().catch(function () {});
+                        flipbookModal.requestFullscreen()
+                            .then(function () {
+                                flipbookNativeFullscreenActive = true;
+                            })
+                            .catch(function () {});
                     }
                 });
             }
 
+            document.addEventListener('fullscreenchange', function () {
+                if (flipbookNativeFullscreenActive && !document.fullscreenElement && flipbookIsOpen) {
+                    flipbookNativeFullscreenActive = false;
+                    closeFlipbookReader(false);
+                }
+            });
+
             window.addEventListener('popstate', function () {
                 if (flipbookIsOpen) {
+                    if (history.state && typeof history.state.aghecScrollY === 'number') {
+                        savedScrollX = history.state.aghecScrollX || 0;
+                        savedScrollY = history.state.aghecScrollY || 0;
+                    }
                     flipbookHistoryPushed = false;
                     closeFlipbookReader(true);
-                    var target = document.getElementById('publications');
-                    if (target) {
-                        window.setTimeout(function () {
-                            target.scrollIntoView({ behavior: 'auto', block: 'start' });
-                        }, 50);
-                    }
+                } else {
+                    restoreWebsitePosition();
                 }
             });
 
